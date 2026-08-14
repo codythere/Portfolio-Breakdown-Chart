@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>持股與產業族群比重分析</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<!-- 導入網頁截圖套件 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+  :root{
+    --bg: #10151b;
+    --panel: #171e26;
+    --panel-2: #1d2530;
+    --line: #2a3441;
+    --ink: #e8ecef;
+    --ink-dim: #8a97a3;
+    --ink-faint: #566270;
+    --amber: #e8a33d;
+    --red-tw: #e0524a;   /* 台股慣例：紅=漲 */
+    --green-tw: #2fa876; /* 台股慣例：綠=跌 */
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, #1a222c 0%, transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:'Noto Sans TC','IBM Plex Mono',sans-serif;
+    min-height:100vh;
+    padding:32px 20px 64px;
+  }
+  .wrap{max-width:980px;margin:0 auto;}
+
+  /* header */
+  header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom:1px solid var(--line);
+    padding-bottom:18px; margin-bottom:28px;
+    flex-wrap:wrap; gap:10px;
+  }
+  .brand{display:flex; align-items:baseline; gap:12px;}
+  .brand .dot{
+    width:9px;height:9px;border-radius:50%;background:var(--amber);
+    box-shadow:0 0 10px 2px rgba(232,163,61,.55);
+    display:inline-block; transform:translateY(-2px);
+  }
+  h1{font-size:22px; font-weight:900; letter-spacing:.02em; margin:0;}
+  .clock{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim);}
+
+  /* input & upload */
+  .cash-input{margin-bottom:14px;padding:16px 18px;border:1px solid var(--line);border-radius:4px;background:var(--panel);display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .cash-input label{font-weight:700;font-size:13px;min-width:42px;}
+  .cash-control{display:flex;align-items:center;gap:8px;}
+  #cashInput{width:180px;padding:8px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:3px;color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:13px;}
+  #cashInput:focus{outline:none;border-color:var(--amber);}
+  .cash-control span{color:var(--ink-dim);font-family:'IBM Plex Mono',monospace;font-size:12px;}
+  .cash-hint{color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;font-size:10.5px;}
+
+  #dropzone{
+    border:1px dashed var(--line);
+    border-radius:4px;
+    padding:44px 24px;
+    text-align:center;
+    background:var(--panel);
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+    position:relative;
+  }
+  #dropzone.drag{border-color:var(--amber); background:var(--panel-2);}
+  #dropzone .icon{
+    width:38px;height:38px;margin:0 auto 14px;
+    border:1px solid var(--ink-faint); border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--ink-dim); font-size:18px;
+  }
+  #dropzone .t1{font-weight:700; font-size:15px; margin-bottom:6px;}
+  #dropzone .t2{font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--ink-faint);}
+  #fileInput{display:none;}
+
+  #error{
+    display:none;
+    margin-top:14px; padding:12px 14px;
+    border:1px solid rgba(224,82,74,.4);
+    background:rgba(224,82,74,.08);
+    color:#f0a29c;
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px;
+    border-radius:3px;
+  }
+
+  /* results */
+  #results{display:none; padding:10px; border-radius:6px;}
+  .toolbar{
+    display:flex; justify-content:space-between; align-items:center;
+    margin:10px 0 16px; flex-wrap:wrap; gap:10px;
+  }
+  .toolbar .fname{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim);}
+  .toolbar button{
+    background:transparent; border:1px solid var(--line); color:var(--ink-dim);
+    font-family:'IBM Plex Mono',monospace; font-size:11.5px;
+    padding:7px 12px; border-radius:3px; cursor:pointer; letter-spacing:.03em;
+  }
+  .toolbar button:hover{border-color:var(--amber); color:var(--amber);}
+
+  .section-title{
+    font-size:16px; font-weight:700; margin:28px 0 12px;
+    display:flex; align-items:center; gap:8px; color:var(--ink);
+  }
+  .section-title::before{
+    content:''; display:inline-block; width:4px; height:16px; background:var(--amber); border-radius:2px;
+  }
+
+  .board{
+    display:grid; grid-template-columns:340px 1fr; gap:0;
+    border:1px solid var(--line); border-radius:6px; overflow:hidden;
+    background:var(--panel); margin-bottom:20px;
+  }
+  @media (max-width:680px){ .board{grid-template-columns:1fr;} }
+
+  .chart-pane{
+    display:flex; align-items:center; justify-content:center;
+    padding:28px 18px; border-right:1px solid var(--line);
+    background:
+      radial-gradient(400px 400px at 50% 40%, rgba(232,163,61,.05), transparent 70%),
+      var(--panel-2);
+  }
+  @media (max-width:680px){ .chart-pane{border-right:none; border-bottom:1px solid var(--line);} }
+
+  .chartSvg{width:100%; max-width:340px; height:auto;}
+  .slice{stroke:var(--panel-2); stroke-width:1.5; transition:opacity .12s ease, filter .12s ease;}
+  .slice:hover{opacity:.82; filter:brightness(1.15); cursor:pointer;}
+  .slice-label{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; fill:#0e1217;
+    font-weight:700; pointer-events:none; text-anchor:middle;
+  }
+  .center-label{font-family:'IBM Plex Mono',monospace; fill:var(--ink-faint); font-size:9.5px; letter-spacing:.08em;}
+  .center-value{font-family:'IBM Plex Mono',monospace; fill:var(--ink); font-size:15px; font-weight:700;}
+
+  .legend-pane{padding:6px 0; max-height:520px; overflow-y:auto;}
+  .legend-row{
+    display:grid; grid-template-columns:14px minmax(90px,1fr) auto auto auto auto; gap:10px;
+    align-items:center; padding:10px 20px;
+    border-bottom:1px solid var(--line);
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px;
+  }
+  .legend-row.industry-row{
+    grid-template-columns:14px minmax(120px,1fr) auto auto;
+  }
+  .legend-row:last-child{border-bottom:none;}
+  .legend-row:hover{background:rgba(255,255,255,.02);}
+  .sw{width:11px;height:11px;border-radius:2px; flex-shrink:0;}
+  .lname{font-family:'Noto Sans TC',sans-serif; font-weight:500; color:var(--ink); font-size:13.5px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .lpct{color:var(--ink); font-weight:600; text-align:right; min-width:52px;}
+  .lval{color:var(--ink-faint); text-align:right; min-width:72px;}
+  .lprofit{font-weight:600; text-align:right; min-width:72px;}
+  .lprofit.up{color:var(--red-tw);}
+  .lprofit.down{color:var(--green-tw);}
+  .lreturn{font-weight:600; text-align:right; min-width:58px;}
+  .lreturn.up{color:var(--red-tw);}
+  .lreturn.down{color:var(--green-tw);}
+  .refresh-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+
+  .summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .summary-card{border:1px solid var(--line);background:var(--panel);padding:10px 14px;border-radius:4px;min-width:150px;}
+  .summary-label{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-faint);}
+  .summary-value{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:700;margin-top:4px;}
+  .summary-value.up{color:var(--red-tw);}
+  .summary-value.down{color:var(--green-tw);}
+  .legend-head{display:grid;grid-template-columns:14px minmax(90px,1fr) auto auto auto auto;gap:10px;padding:8px 20px;
+    color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;font-size:9.5px;border-bottom:1px solid var(--line);}
+  .legend-head.industry-head{grid-template-columns:14px minmax(120px,1fr) auto auto;}
+
+  /* AI 總結卡片樣式 */
+  .ai-card{
+    border:1px solid var(--line);
+    background: linear-gradient(145deg, var(--panel-2) 0%, var(--panel) 100%);
+    border-radius:6px;
+    padding:20px 24px;
+    margin-top:24px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.25);
+  }
+  .ai-header{
+    display:flex; align-items:center; gap:8px;
+    font-size:15px; font-weight:700; color:var(--amber);
+    margin-bottom:14px; border-bottom:1px dashed var(--line);
+    padding-bottom:10px;
+  }
+  .ai-content{
+    display:flex; flex-direction:column; gap:10px;
+    font-size:13px; line-height:1.6; color:var(--ink);
+  }
+  .ai-item{
+    display:flex; align-items:flex-start; gap:8px;
+  }
+  .ai-bullet{
+    color:var(--amber); font-weight:bold; flex-shrink:0;
+  }
+
+  .note{
+    margin-top:14px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-faint);
+    display:flex; gap:8px; align-items:baseline;
+  }
+  .note b{color:var(--amber); font-weight:600;}
+
+  footer{
+    margin-top:40px; padding-top:16px; border-top:1px solid var(--line);
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-faint);
+    text-align:center; letter-spacing:.05em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>持股與產業族群比重</h1>
+    </div>
+    <div class="clock" id="clock">STANDBY</div>
+  </header>
+
+  <div class="cash-input">
+    <label for="cashInput">現金</label>
+    <div class="cash-control">
+      <input type="number" id="cashInput" min="0" step="1" value="0" placeholder="輸入現金金額">
+      <span>元</span>
+    </div>
+    <div class="cash-hint">現金會納入總資產與持股佔比計算</div>
+  </div>
+
+  <div id="dropzone">
+    <div class="icon">↑</div>
+    <div class="t1">拖曳或點擊上傳持股 CSV</div>
+    <div class="t2">支援券商匯出格式・自動判讀個股與產業族群・UTF-8 或 Big5 皆可</div>
+    <input type="file" id="fileInput" accept=".csv,text/csv">
+  </div>
+
+  <div id="error"></div>
+
+  <!-- 結果容器 -->
+  <div id="results">
+    <div class="toolbar" id="toolbar">
+      <span class="fname" id="fname"></span>
+      <div class="refresh-row">
+        <button id="downloadBtn">📷 下載原圖</button>
+        <button id="resetBtn">重新上傳</button>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="summary-card"><div class="summary-label">總資產</div><div class="summary-value" id="summaryTotal">—</div></div>
+      <div class="summary-card"><div class="summary-label">總成本</div><div class="summary-value" id="summaryCost">—</div></div>
+      <div class="summary-card"><div class="summary-label">總損益</div><div class="summary-value" id="summaryProfit">—</div></div>
+      <div class="summary-card"><div class="summary-label">整體報酬率</div><div class="summary-value" id="summaryReturn">—</div></div>
+    </div>
+
+    <!-- 個股分析區塊 -->
+    <div class="section-title">個股持股佔比</div>
+    <div class="board">
+      <div class="chart-pane">
+        <svg id="chartSvg" class="chartSvg" viewBox="0 0 300 300"></svg>
+      </div>
+      <div class="legend-pane" id="legendPane"></div>
+    </div>
+
+    <!-- 產業族群分析區塊 -->
+    <div class="section-title">產業族群佔比</div>
+    <div class="board">
+      <div class="chart-pane">
+        <svg id="industryChartSvg" class="chartSvg" viewBox="0 0 300 300"></svg>
+      </div>
+      <div class="legend-pane" id="industryLegendPane"></div>
+    </div>
+
+    <!-- AI 總結區塊 -->
+    <div class="ai-card">
+      <div class="ai-header">
+        <span>💡 AI 投資組合診斷總結</span>
+      </div>
+      <div class="ai-content" id="aiSummaryContent">
+        <!-- JS 動態生成內容 -->
+      </div>
+    </div>
+
+    <div class="note">小於 <b id="threshLabel">3%</b> 的部位圖上不顯示文字標籤。</div>
+  </div>
+
+  <footer>PORTFOLIO WEIGHT & AI DIAGNOSIS — 資料僅存於本機瀏覽器</footer>
+</div>
+
+<script>
+(function(){
+  const clockEl = document.getElementById('clock');
+  function tick(){
+    const d = new Date();
+    const p = n => String(n).padStart(2,'0');
+    clockEl.textContent = `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+  tick(); setInterval(tick,1000);
+
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const errorBox = document.getElementById('error');
+  const results = document.getElementById('results');
+  const toolbar = document.getElementById('toolbar');
+  const fnameEl = document.getElementById('fname');
+  const resetBtn = document.getElementById('resetBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const legendPane = document.getElementById('legendPane');
+  const industryLegendPane = document.getElementById('industryLegendPane');
+  const svg = document.getElementById('chartSvg');
+  const industrySvg = document.getElementById('industryChartSvg');
+  const threshLabel = document.getElementById('threshLabel');
+  const cashInput = document.getElementById('cashInput');
+  const summaryTotal = document.getElementById('summaryTotal');
+  const summaryCost = document.getElementById('summaryCost');
+  const summaryProfit = document.getElementById('summaryProfit');
+  const summaryReturn = document.getElementById('summaryReturn');
+  const aiSummaryContent = document.getElementById('aiSummaryContent');
+
+  const LABEL_THRESHOLD = 3; 
+  threshLabel.textContent = LABEL_THRESHOLD + '%';
+  
+  const PALETTE = [
+    '#e8a33d','#e0524a','#2fa876','#4d8fe0','#c48fd6',
+    '#e6c34a','#d67a3f','#5cb3b0','#a7c957','#c96b8f',
+    '#7d8fe0','#e0a8a2','#8fb3d9','#d9b56a','#79c9a4'
+  ];
+
+  /* 產業族群分類資料庫 */
+  const INDUSTRY_MAP = {
+    '2330': '大型權值股', '台積電': '大型權值股',
+    '2454': 'IC設計/權值', '聯發科': 'IC設計/權值',
+    '2327': '被動元件', '國巨': '被動元件', '國巨*': '被動元件',
+    '3026': '被動元件', '禾伸堂': '被動元件',
+    '2492': '被動元件', '華新科': '被動元件',
+    '3017': '散熱模組', '奇鋐': '散熱模組',
+    '3324': '散熱模組', '雙鴻': '散熱模組',
+    '2344': '記憶體', '華邦電': '記憶體',
+    '2408': '記憶體', '南亞科': '記憶體',
+    '3260': '記憶體', '威剛': '記憶體',
+    '3037': 'PCB/載板', '欣興': 'PCB/載板',
+    '8046': 'PCB/載板', '南電': 'PCB/載板',
+    '2481': '功率元件', '強茂': '功率元件',
+    '8261': '功率元件', '富鼎': '功率元件',
+    '5425': '功率元件', '台半': '功率元件',
+    '0050': 'ETF', '元大台灣50': 'ETF',
+    '0056': 'ETF', '元大高股息': 'ETF',
+    '00878': 'ETF', '國泰永續高股息': 'ETF',
+    '00919': 'ETF', '群益台灣精選高息': 'ETF',
+    '00929': 'ETF', '復華台灣科技優息': 'ETF'
+  };
+
+  function getIndustry(name, code) {
+    if (code && INDUSTRY_MAP[code]) return INDUSTRY_MAP[code];
+    if (name && INDUSTRY_MAP[name]) return INDUSTRY_MAP[name];
+    if (code && code.startsWith('00')) return 'ETF';
+    if (name && (name.includes('ETF') || name.includes('高股息') || name.includes('債券'))) return 'ETF';
+    return '其他股票';
+  }
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+  resetBtn.addEventListener('click', () => {
+    results.style.display = 'none';
+    errorBox.style.display = 'none';
+    fileInput.value = '';
+    portfolio = [];
+    render([]);
+  });
+  cashInput.addEventListener('input', () => {
+    cash = Math.max(0, Number(cashInput.value) || 0);
+    if (portfolio.length) render(portfolio);
+  });
+
+  // 截圖打包下載
+  downloadBtn.addEventListener('click', () => {
+    downloadBtn.innerText = '📸 截圖中...';
+    toolbar.style.display = 'none';
+
+    html2canvas(results, {
+      backgroundColor: '#10151b',
+      scale: 2,
+      useCORS: true
+    }).then(canvas => {
+      toolbar.style.display = 'flex';
+      downloadBtn.innerText = '📷 下載原圖';
+
+      const a = document.createElement('a');
+      a.download = `持股與產業分析圖表_${new Date().toISOString().slice(0,10)}.png`;
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    }).catch(err => {
+      toolbar.style.display = 'flex';
+      downloadBtn.innerText = '📷 下載原圖';
+      console.error(err);
+      alert('圖片生成失敗：' + err.message);
+    });
+  });
+
+  function showError(msg){
+    errorBox.textContent = msg;
+    errorBox.style.display = 'block';
+    results.style.display = 'none';
+  }
+
+  function handleFile(file){
+    errorBox.style.display = 'none';
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const buf = reader.result;
+        let text = decodeBuffer(buf);
+        const rows = parseCSV(text);
+        const data = extractHoldings(rows);
+        if (!data.length) {
+          showError('讀不到有效的持股資料。請確認 CSV 內含「股票名稱」欄位，以及「現值」或「市值」欄位。');
+          return;
+        }
+        fnameEl.textContent = file.name;
+        portfolio = data;
+        cash = Math.max(0, Number(cashInput.value) || 0);
+        render(portfolio);
+        results.style.display = 'block';
+      } catch(err){
+        console.error(err);
+        showError('解析失敗：' + err.message);
+      }
+    };
+    reader.onerror = () => showError('檔案讀取失敗。');
+    reader.readAsArrayBuffer(file);
+  }
+
+  function decodeBuffer(buf){
+    let text = new TextDecoder('utf-8').decode(buf);
+    const bad = (text.match(/\uFFFD/g) || []).length;
+    if (bad > 0) {
+      try { text = new TextDecoder('big5').decode(buf); } catch(e) {}
+    }
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    return text;
+  }
+
+  function parseCSV(text){
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++){
+      const c = text[i];
+      if (inQuotes){
+        if (c === '"'){
+          if (text[i+1] === '"'){ field += '"'; i++; }
+          else inQuotes = false;
+        } else field += c;
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ','){ row.push(field); field = ''; }
+        else if (c === '\n' || c === '\r'){
+          if (c === '\r' && text[i+1] === '\n') i++;
+          row.push(field); field = '';
+          if (row.some(f => f !== '')) rows.push(row);
+          row = [];
+        } else field += c;
+      }
+    }
+    if (field !== '' || row.length){ row.push(field); if (row.some(f=>f!=='')) rows.push(row); }
+    return rows;
+  }
+
+  function toNumber(s){
+    if (s == null) return NaN;
+    const cleaned = String(s).replace(/[",%]/g, '').trim();
+    if (cleaned === '' || cleaned === '-') return NaN;
+    return Number(cleaned);
+  }
+
+  let portfolio = [];
+  let cash = 0;
+
+  function extractHoldings(rows){
+    if (!rows.length) return [];
+    const header = rows[0].map(h => h.trim());
+
+    const findCol = (candidates) => {
+      for (const cand of candidates){
+        const idx = header.findIndex(h => h.includes(cand));
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    const codeIdx = findCol(['股票代號','證券代號','代號','商品代號']);
+    const nameIdx = findCol(['股票名稱','名稱','股名','商品']);
+    const qtyIdx = findCol(['股數','數量']);
+    const avgIdx = findCol(['成交均價','平均成本','均價']);
+    const valueIdx = findCol(['現值','市值']);
+    const costIdx = findCol(['付出成本','成本']);
+    const priceIdx = findCol(['市價','現價']);
+    const profitIdx = findCol(['總損益','預估損益','損益']);
+    const returnIdx = findCol(['報酬率','損益率']);
+
+    if (nameIdx === -1) throw new Error('找不到股票名稱欄位');
+
+    const out = [];
+    for (let i = 1; i < rows.length; i++){
+      const r = rows[i];
+      const rawName = (r[nameIdx] || '').trim().replace(/\*+$/,'');
+      if (!rawName || /^總/.test(rawName) || rawName.includes('小計') || rawName.includes('合計')) continue;
+
+      const name = (r[nameIdx] || '').trim();
+      const codeRaw = codeIdx !== -1 ? String(r[codeIdx] || '').trim() : '';
+      const code = (codeRaw.match(/\d{4,6}/) || [])[0] || '';
+      const qty = qtyIdx !== -1 ? toNumber(r[qtyIdx]) : NaN;
+      let value = valueIdx !== -1 ? toNumber(r[valueIdx]) : NaN;
+      let cost = costIdx !== -1 ? toNumber(r[costIdx]) : NaN;
+      const avg = avgIdx !== -1 ? toNumber(r[avgIdx]) : NaN;
+      const price = priceIdx !== -1 ? toNumber(r[priceIdx]) : NaN;
+      let profit = profitIdx !== -1 ? toNumber(r[profitIdx]) : NaN;
+      let ret = returnIdx !== -1 ? parsePercent(r[returnIdx]) : NaN;
+
+      if (isNaN(cost) && !isNaN(qty) && !isNaN(avg)) cost = qty * avg;
+      if (isNaN(value) && !isNaN(qty) && !isNaN(price)) value = qty * price;
+      if (isNaN(profit) && !isNaN(value) && !isNaN(cost)) profit = value - cost;
+      if (isNaN(ret) && !isNaN(profit) && cost > 0) ret = profit / cost * 100;
+
+      if (isNaN(value) || value <= 0) continue;
+      
+      const industry = getIndustry(name, code);
+      out.push({ name, code, qty, cost, value, price, profit, ret, industry });
+    }
+
+    const merged = {};
+    out.forEach(o => {
+      const key = o.name;
+      if (!merged[key]) merged[key] = {...o};
+      else {
+        const m = merged[key];
+        m.qty = (isNaN(m.qty)?0:m.qty) + (isNaN(o.qty)?0:o.qty);
+        m.cost = (isNaN(m.cost)?0:m.cost) + (isNaN(o.cost)?0:o.cost);
+        m.value = (isNaN(m.value)?0:m.value) + o.value;
+        m.profit = (isNaN(m.profit)?0:m.profit) + (isNaN(o.profit)?0:o.profit);
+        m.ret = m.cost > 0 ? m.profit / m.cost * 100 : NaN;
+      }
+    });
+    return Object.values(merged).sort((a,b) => b.value - a.value);
+  }
+
+  function parsePercent(s){
+    if (s == null) return NaN;
+    const cleaned = String(s).replace(/,/g,'').replace('%','').trim();
+    const n = Number(cleaned);
+    return isNaN(n) ? NaN : n;
+  }
+
+  function formatMoney(n){ return Math.round(n).toLocaleString('zh-TW'); }
+  function formatSignedMoney(n){
+    if (isNaN(n)) return '—';
+    return (n >= 0 ? '+' : '') + formatMoney(n);
+  }
+  function formatSignedPct(n){
+    if (isNaN(n)) return '—';
+    return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+  }
+
+  function polarToCartesian(cx, cy, r, angleDeg){
+    const rad = (angleDeg - 90) * Math.PI / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  }
+
+  function arcPath(cx, cy, r, startAngle, endAngle){
+    const start = polarToCartesian(cx, cy, r, endAngle);
+    const end = polarToCartesian(cx, cy, r, startAngle);
+    const largeArc = endAngle - startAngle <= 180 ? 0 : 1;
+    return `M ${cx} ${cy} L ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 0 ${end.x} ${end.y} Z`;
+  }
+
+  function render(data){
+    const totalStock = data.reduce((s,d) => s + d.value, 0);
+    const total = totalStock + cash;
+    const withPct = data.map((d,i) => ({ ...d, pct: total ? d.value/total*100 : 0, color: PALETTE[i % PALETTE.length] }));
+    if (cash > 0) withPct.push({name:'現金', value:cash, pct:total ? cash/total*100 : 0, color:'#8a97a3', isCash:true, industry:'現金'});
+
+    const totalCost = data.reduce((s,d) => s + (isNaN(d.cost) ? 0 : d.cost), 0);
+    const totalProfit = data.reduce((s,d) => s + (isNaN(d.profit) ? 0 : d.profit), 0);
+    const totalReturn = totalCost > 0 ? totalProfit / totalCost * 100 : NaN;
+
+    summaryTotal.textContent = formatMoney(total);
+    summaryCost.textContent = formatMoney(totalCost);
+    summaryProfit.textContent = formatSignedMoney(totalProfit);
+    summaryReturn.textContent = formatSignedPct(totalReturn);
+    [summaryProfit, summaryReturn].forEach((el,i) => {
+      const v = i===0 ? totalProfit : totalReturn;
+      el.classList.toggle('up', v > 0);
+      el.classList.toggle('down', v < 0);
+    });
+
+    // 1. 個股圓餅圖
+    renderPieChart(svg, withPct, total, '個股資產');
+    renderStockLegend(legendPane, withPct);
+
+    // 2. 產業族群圓餅圖
+    const indMap = {};
+    withPct.forEach(d => {
+      const ind = d.industry || '其他股票';
+      if (!indMap[ind]) indMap[ind] = { name: ind, value: 0, pct: 0 };
+      indMap[ind].value += d.value;
+      indMap[ind].pct += d.pct;
+    });
+    const indData = Object.values(indMap)
+      .sort((a,b) => b.value - a.value)
+      .map((d, i) => ({ ...d, color: d.name === '現金' ? '#8a97a3' : PALETTE[i % PALETTE.length] }));
+
+    renderPieChart(industrySvg, indData, total, '族群資產');
+    renderIndustryLegend(industryLegendPane, indData);
+
+    // 3. 生成 AI 診斷總結
+    generateAISummary(data, withPct, indData, total, totalProfit, totalReturn);
+  }
+
+  function generateAISummary(stocks, withPct, indData, total, totalProfit, totalReturn){
+    const items = [];
+
+    // 風險集中度判斷
+    const topStock = withPct.find(d => !d.isCash);
+    if (topStock) {
+      if (topStock.pct >= 35) {
+        items.push(`<b>持股集中度偏高：</b>第一大持股 <span style="color:var(--amber)">${topStock.name}</span> 佔比達 <b>${topStock.pct.toFixed(1)}%</b>，單一標的波動對整體資產影響較大，建議適度評估分散風險。`);
+      } else {
+        items.push(`<b>個股配置均衡：</b>最大持股 <span style="color:var(--amber)">${topStock.name}</span> 佔比為 <b>${topStock.pct.toFixed(1)}%</b>，整體個股權重分配相對平穩。`);
+      }
+    }
+
+    // 產業集中度判斷
+    const topInd = indData.find(d => d.name !== '現金');
+    if (topInd) {
+      if (topInd.pct >= 40) {
+        items.push(`<b>產業族群偏向著重：</b>資產主要集中於 <span style="color:var(--amber)">${topInd.name}</span> 族群（佔 <b>${topInd.pct.toFixed(1)}%</b>），若該產業遭遇總體經濟或景氣循環逆風，波動度會較大。`);
+      } else {
+        items.push(`<b>產業分散度良好：</b>最大產業族群為 <span style="color:var(--amber)">${topInd.name}</span>（佔 <b>${topInd.pct.toFixed(1)}%</b>），跨產業配置具有一定的抗風險能力。`);
+      }
+    }
+
+    // 現金水位分析
+    const cashObj = withPct.find(d => d.isCash);
+    const cashPct = cashObj ? cashObj.pct : 0;
+    if (cashPct === 0) {
+      items.push(`<b>現金水位告急：</b>目前投資組合無現金儲備（100% 全額投入股票），若遇到市場拉回可能缺乏逢低加碼的資金彈性。`);
+    } else if (cashPct > 30) {
+      items.push(`<b>防守力道充沛：</b>現金流備留佔比達 <b>${cashPct.toFixed(1)}%</b>，防禦力極佳，可耐心等待市場優質買點。`);
+    } else {
+      items.push(`<b>現金比例適中：</b>現金佔比為 <b>${cashPct.toFixed(1)}%</b>，兼顧資產效益與機動調整空間。`);
+    }
+
+    // 獲利金雞母與績效
+    if (stocks.length > 0) {
+      const bestStock = [...stocks].sort((a,b) => (b.profit||0) - (a.profit||0))[0];
+      if (bestStock && bestStock.profit > 0) {
+        items.push(`<b>最佳獲利貢獻者：</b><span style="color:var(--red-tw)">${bestStock.name}</span> 為目前獲利最高的標的，貢獻損益 <b>${formatSignedMoney(bestStock.profit)}</b> (報酬率 ${formatSignedPct(bestStock.ret)})。`);
+      }
+    }
+
+    // 渲染至介面
+    aiSummaryContent.innerHTML = items.map(text => `
+      <div class="ai-item">
+        <span class="ai-bullet">▪</span>
+        <div>${text}</div>
+      </div>
+    `).join('');
+  }
+
+  function renderPieChart(targetSvg, dataset, total, centerTitle){
+    targetSvg.innerHTML = '';
+    const cx = 150, cy = 150, r = 130;
+    let angle = 0;
+    const ns = 'http://www.w3.org/2000/svg';
+
+    dataset.forEach(d => {
+      const sweep = d.pct / 100 * 360;
+      if (sweep <= 0) return;
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', arcPath(cx, cy, r, angle, angle + sweep));
+      path.setAttribute('fill', d.color);
+      path.setAttribute('class', 'slice');
+      const title = document.createElementNS(ns, 'title');
+      title.textContent = `${d.name}  ${d.pct.toFixed(1)}%`;
+      path.appendChild(title);
+      targetSvg.appendChild(path);
+
+      if (d.pct >= LABEL_THRESHOLD){
+        const mid = angle + sweep/2;
+        const labelR = r * 0.68;
+        const pos = polarToCartesian(cx, cy, labelR, mid);
+        const text = document.createElementNS(ns, 'text');
+        text.setAttribute('x', pos.x); text.setAttribute('y', pos.y - 4);
+        text.setAttribute('class', 'slice-label');
+        text.textContent = d.name.length > 5 ? d.name.slice(0,4)+'…' : d.name;
+        targetSvg.appendChild(text);
+        const text2 = document.createElementNS(ns, 'text');
+        text2.setAttribute('x', pos.x); text2.setAttribute('y', pos.y + 9);
+        text2.setAttribute('class', 'slice-label');
+        text2.textContent = d.pct.toFixed(1) + '%';
+        targetSvg.appendChild(text2);
+      }
+      angle += sweep;
+    });
+
+    const hole = document.createElementNS(ns, 'circle');
+    hole.setAttribute('cx', cx); hole.setAttribute('cy', cy); hole.setAttribute('r', r*0.42);
+    hole.setAttribute('fill', '#1d2530'); hole.setAttribute('stroke', '#2a3441'); hole.setAttribute('stroke-width', '1');
+    targetSvg.appendChild(hole);
+
+    const lbl = document.createElementNS(ns, 'text');
+    lbl.setAttribute('x', cx); lbl.setAttribute('y', cy - 6); lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('class','center-label');
+    lbl.textContent = centerTitle; targetSvg.appendChild(lbl);
+
+    const val = document.createElementNS(ns, 'text');
+    val.setAttribute('x', cx); val.setAttribute('y', cy + 14); val.setAttribute('text-anchor','middle'); val.setAttribute('class','center-value');
+    val.textContent = formatMoney(total); targetSvg.appendChild(val);
+  }
+
+  function renderStockLegend(container, list){
+    container.innerHTML = `
+      <div class="legend-head"><span></span><span>標的 (族群)</span><span>佔比</span><span>市值</span><span>損益</span><span>報酬率</span></div>
+    `;
+    list.forEach(d => {
+      const row = document.createElement('div');
+      row.className = 'legend-row';
+      const profit = d.isCash ? NaN : d.profit;
+      const ret = d.isCash ? NaN : d.ret;
+      const clsP = profit > 0 ? 'up' : profit < 0 ? 'down' : '';
+      const clsR = ret > 0 ? 'up' : ret < 0 ? 'down' : '';
+      const displayName = d.isCash ? d.name : `${d.name} <small style="color:var(--ink-faint)">(${d.industry})</small>`;
+
+      row.innerHTML = `
+        <span class="sw" style="background:${d.color}"></span>
+        <span class="lname">${displayName}</span>
+        <span class="lpct">${d.pct.toFixed(1)}%</span>
+        <span class="lval">${formatMoney(d.value)}</span>
+        <span class="lprofit ${clsP}">${d.isCash ? '—' : formatSignedMoney(profit)}</span>
+        <span class="lreturn ${clsR}">${d.isCash ? '—' : formatSignedPct(ret)}</span>
+      `;
+      container.appendChild(row);
+    });
+  }
+
+  function renderIndustryLegend(container, list){
+    container.innerHTML = `
+      <div class="legend-head industry-head"><span></span><span>產業族群</span><span>佔比</span><span>總市值</span></div>
+    `;
+    list.forEach(d => {
+      const row = document.createElement('div');
+      row.className = 'legend-row industry-row';
+      row.innerHTML = `
+        <span class="sw" style="background:${d.color}"></span>
+        <span class="lname">${escapeHtml(d.name)}</span>
+        <span class="lpct">${d.pct.toFixed(1)}%</span>
+        <span class="lval">${formatMoney(d.value)}</span>
+      `;
+      container.appendChild(row);
+    });
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+})();
+</script>
+</body>
+</html>
